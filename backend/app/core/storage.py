@@ -4,11 +4,13 @@ Provides secure local storage instead of cloud storage for
 data sovereignty and compliance (HIPAA, GxP, 21 CFR Part 11).
 """
 
+import os
 import uuid
 import aiofiles
 import aiofiles.os
 from pathlib import Path
 from typing import Optional
+from loguru import logger
 
 from .config import settings
 
@@ -58,6 +60,25 @@ class LocalStorage:
         # Write file asynchronously
         async with aiofiles.open(full_path, "wb") as f:
             await f.write(file_data)
+            await f.flush()  # Flush Python buffers
+
+            # Force OS-level flush on Windows (critical for Word documents)
+            if hasattr(os, 'fsync'):
+                try:
+                    os.fsync(f.fileno())
+                except Exception as e:
+                    logger.warning(f"OS fsync failed: {e}")
+
+        # Verify file was written correctly
+        if not full_path.exists():
+            raise IOError(f"File was not created: {full_path}")
+
+        file_size = full_path.stat().st_size
+        expected_size = len(file_data)
+        if file_size != expected_size:
+            raise IOError(f"File size mismatch: expected {expected_size}, got {file_size}")
+
+        logger.info(f"File uploaded and verified: {key} ({file_size} bytes)")
 
         return key
 

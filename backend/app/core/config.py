@@ -1,5 +1,7 @@
 """Application configuration using Pydantic settings."""
 
+import os
+import platform
 from functools import lru_cache
 from typing import Optional
 from pydantic_settings import BaseSettings
@@ -22,7 +24,17 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
 
     # Local Storage
-    storage_path: str = "./uploads"
+    # Determine storage path based on platform
+    if platform.system() == "Windows":
+        default_storage = os.path.join(
+            os.getenv("LOCALAPPDATA", "."),
+            "TraceScribe",
+            "uploads"
+        )
+    else:
+        default_storage = "./uploads"
+
+    storage_path: str = default_storage
 
     # Clerk Authentication
     clerk_secret_key: str = ""

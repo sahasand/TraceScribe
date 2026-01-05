@@ -170,11 +170,18 @@ async def download_document(
             ip_address=ip_address,
         )
 
+        # WINDOWS FIX: Explicitly position BytesIO at start
+        # and add proper HTTP headers
+        buffer = io.BytesIO(file_bytes)
+        buffer.seek(0)  # Explicitly seek to beginning for Windows compatibility
+
         return StreamingResponse(
-            io.BytesIO(file_bytes),
+            buffer,
             media_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             headers={
                 "Content-Disposition": f'attachment; filename="{filename}"',
+                "Content-Length": str(len(file_bytes)),  # Explicit content length
+                "Cache-Control": "no-cache, no-store, must-revalidate",  # Prevent OneDrive caching
             },
         )
 

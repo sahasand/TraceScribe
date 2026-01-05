@@ -8,8 +8,11 @@ of UIF (Universal Intermediate Format) documents to Word format.
 from __future__ import annotations
 
 import logging
+import os
 import tempfile
+import time
 import uuid
+import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional, List, Dict, Any
@@ -291,7 +294,46 @@ class DocEngine:
 
         # Save document
         self.doc.save(str(output_path))
-        logger.info(f"Document saved to: {output_path}")
+
+        # WINDOWS FIX: Ensure file is fully written to disk
+        if hasattr(os, 'fsync'):
+            try:
+                with open(output_path, 'rb') as f:
+                    os.fsync(f.fileno())
+                logger.debug(f"OS fsync completed for {output_path}")
+            except Exception as e:
+                logger.warning(f"OS fsync failed: {e}")
+
+        # Wait for file system to stabilize (Windows-specific)
+        time.sleep(0.05)  # 50ms delay
+
+        # Validate ZIP structure (DOCX files are ZIP archives)
+        try:
+            with zipfile.ZipFile(output_path, 'r') as z:
+                # Test ZIP integrity
+                corrupt_file = z.testzip()
+                if corrupt_file:
+                    logger.error(f"Corrupted file in DOCX ZIP: {corrupt_file}")
+                    raise ValueError(f"Corrupted file in DOCX ZIP: {corrupt_file}")
+
+                # Verify required DOCX parts exist
+                required_files = ['[Content_Types].xml', 'word/document.xml']
+                zip_files = set(z.namelist())
+                missing = [f for f in required_files if f not in zip_files]
+                if missing:
+                    logger.error(f"Missing required DOCX files: {missing}")
+                    raise ValueError(f"Missing required DOCX files: {missing}")
+
+                logger.info(f"ZIP validation passed: {len(zip_files)} files in archive")
+
+        except zipfile.BadZipFile as e:
+            logger.error(f"Invalid DOCX ZIP structure: {e}")
+            raise ValueError(f"Generated DOCX file is corrupted: {e}")
+        except Exception as e:
+            logger.error(f"ZIP validation failed: {e}")
+            raise
+
+        logger.info(f"Document saved and validated: {output_path}")
 
         return output_path
 
