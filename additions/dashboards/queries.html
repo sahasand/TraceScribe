@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Axiom Fusion | DM Query Dashboard</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- ApexCharts -->
+    <script src="https://cdn.jsdelivr.net/npm/apexcharts"></script>
+    
+    <!-- SheetJS (XLSX) for parsing Binary Excel files -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.0/package/dist/xlsx.full.min.js"></script>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --glass-bg: rgba(17, 24, 39, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --accent-primary: #3b82f6;
+            --accent-secondary: #8b5cf6;
+            --success: #10b981;
+            --warning: #f59e0b;
+            --danger: #ef4444;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            background-image: 
+                radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.1) 0px, transparent 50%);
+            background-attachment: fixed;
+            color: #e2e8f0;
+        }
+
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            min-height: 300px;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e293b; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #475569; 
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #64748b; 
+        }
+
+        .drag-active {
+            border-color: #3b82f6 !important;
+            background: rgba(59, 130, 246, 0.1) !important;
+        }
+
+        .metric-value {
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .animate-fade-in {
+            animation: fadeIn 0.5s ease-out forwards;
+        }
+        
+        /* Loading Spinner */
+        .loader {
+            border: 3px solid rgba(255,255,255,0.1);
+            border-radius: 50%;
+            border-top: 3px solid #3b82f6;
+            width: 24px;
+            height: 24px;
+            -webkit-animation: spin 1s linear infinite; /* Safari */
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            vertical-align: middle;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col overflow-x-hidden text-sm md:text-base">
+
+    <!-- Navbar -->
+    <nav class="glass-panel border-b border-white/10 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <div class="flex items-center gap-3">
+                    <div class="bg-blue-600 p-2 rounded-lg">
+                        <i data-lucide="activity" class="w-5 h-5 text-white"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg tracking-tight text-white">Axiom Fusion</h1>
+                        <p class="text-xs text-slate-400">Query Status Intelligence</p>
+                    </div>
+                </div>
+                
+                <!-- Nav Controls (Hidden initially, shown after upload) -->
+                <div id="nav-controls" class="hidden flex items-center gap-4 animate-fade-in">
+                    <!-- Site Filter -->
+                    <div class="relative hidden md:block">
+                        <i data-lucide="filter" class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 transform -translate-y-1/2 z-10"></i>
+                        <select id="siteFilter" class="bg-slate-900/80 border border-slate-700 text-xs text-white rounded-lg pl-9 pr-8 py-2 focus:outline-none focus:border-blue-500 appearance-none cursor-pointer hover:bg-slate-800 transition-colors min-w-[220px] max-w-[300px] truncate">
+                            <option value="all">All Sites</option>
+                        </select>
+                        <i data-lucide="chevron-down" class="w-3 h-3 text-slate-500 absolute right-3 top-1/2 transform -translate-y-1/2 pointer-events-none"></i>
+                    </div>
+
+                    <div class="hidden md:flex items-center gap-2 text-slate-400 text-xs border-l border-white/10 pl-4">
+                        <span class="flex items-center gap-1"><div class="w-2 h-2 rounded-full bg-green-500"></div> Active</span>
+                    </div>
+                    
+                    <button onclick="document.getElementById('fileInput').click()" class="group relative overflow-hidden rounded-lg bg-slate-800 border border-slate-700 px-4 py-2 transition-all hover:bg-slate-700">
+                        <div class="flex items-center gap-2 text-white font-medium text-xs">
+                            <i data-lucide="upload" class="w-3 h-3"></i>
+                            <span>New Upload</span>
+                        </div>
+                    </button>
+                </div>
+            </div>
+            <!-- Mobile Filter (Visible only on small screens after upload) -->
+            <div id="mobile-filter-container" class="md:hidden pb-3 hidden">
+                <select id="siteFilterMobile" class="w-full bg-slate-900/80 border border-slate-700 text-xs text-white rounded-lg px-3 py-2 focus:outline-none">
+                    <option value="all">All Sites</option>
+                </select>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="flex-grow relative p-4 md:p-6 lg:p-8 max-w-[1600px] mx-auto w-full">
+        
+        <!-- 1. Initial Upload State (Centered using Flexbox) -->
+        <div id="upload-hero" class="flex flex-col items-center justify-center w-full min-h-[calc(100vh-120px)] animate-fade-in">
+            <div class="glass-panel rounded-2xl p-8 md:p-12 text-center border-dashed border-2 border-slate-600 hover:border-blue-500 hover:bg-blue-500/5 transition-all cursor-pointer group max-w-lg w-full mx-auto" onclick="document.getElementById('fileInput').click()">
+                <div class="inline-flex items-center justify-center w-20 h-20 rounded-full bg-slate-800 group-hover:bg-blue-600 group-hover:scale-110 transition-all duration-300 mb-6 shadow-lg shadow-blue-900/20">
+                    <i data-lucide="upload-cloud" class="w-10 h-10 text-blue-400 group-hover:text-white transition-colors"></i>
+                </div>
+                <h2 class="text-2xl font-bold text-white mb-3">Upload Query Report</h2>
+                <p class="text-slate-400 mb-8 text-sm leading-relaxed max-w-sm mx-auto">
+                    Please upload the standard Axiom export file.<br>
+                    <span class="font-mono text-xs bg-slate-800 px-2 py-1 rounded text-slate-300 mt-2 inline-block">Axiom_-_Std_Query_Status_Rpt...</span>
+                </p>
+                <button class="bg-blue-600 hover:bg-blue-500 text-white font-semibold py-2.5 px-6 rounded-lg transition-colors shadow-lg shadow-blue-600/20 flex items-center gap-2 mx-auto">
+                    <span id="upload-btn-text" class="flex items-center gap-2">
+                        <i data-lucide="file-spreadsheet" class="w-4 h-4"></i>
+                        Select File
+                    </span>
+                    <span id="upload-spinner" class="hidden loader"></span>
+                </button>
+                
+                <div id="error-container" class="hidden mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-lg text-left">
+                    <p id="error-msg" class="text-xs text-red-400 font-bold mb-2"></p>
+                </div>
+
+                <p class="text-xs text-slate-500 mt-4">Supports .csv, .xls, .xlsx</p>
+            </div>
+        </div>
+
+        <!-- Hidden Input -->
+        <input type="file" id="fileInput" accept=".csv,.xls,.xlsx" class="hidden" />
+
+        <!-- 2. Dashboard View (Hidden Initially) -->
+        <div id="dashboard-view" class="hidden space-y-6 animate-fade-in">
+            
+            <!-- KPI Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <!-- KPI 1 -->
+                <div class="glass-panel rounded-xl p-5 relative overflow-hidden group">
+                    <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <i data-lucide="layers" class="w-16 h-16 text-blue-500"></i>
+                    </div>
+                    <p class="text-slate-400 font-medium text-xs uppercase tracking-wider">Total Queries</p>
+                    <h2 class="text-3xl font-bold text-white mt-2 metric-value" id="kpi-total">0</h2>
+                    <div class="flex items-center gap-2 mt-2">
+                        <span class="text-xs px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20" id="kpi-scope-label">All Sites</span>
+                    </div>
+                </div>
+
+                <!-- KPI 2 -->
+                <div class="glass-panel rounded-xl p-5 relative overflow-hidden group">
+                    <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <i data-lucide="alert-circle" class="w-16 h-16 text-red-500"></i>
+                    </div>
+                    <p class="text-slate-400 font-medium text-xs uppercase tracking-wider">Open Queries</p>
+                    <h2 class="text-3xl font-bold text-white mt-2 metric-value" id="kpi-open">0</h2>
+                    <div class="flex items-center gap-2 mt-2">
+                        <span class="text-xs px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 border border-red-500/20" id="kpi-open-pct">0% Rate</span>
+                    </div>
+                </div>
+
+                <!-- KPI 3 -->
+                <div class="glass-panel rounded-xl p-5 relative overflow-hidden group">
+                    <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <i data-lucide="check-circle-2" class="w-16 h-16 text-green-500"></i>
+                    </div>
+                    <p class="text-slate-400 font-medium text-xs uppercase tracking-wider">Closed Queries</p>
+                    <h2 class="text-3xl font-bold text-white mt-2 metric-value" id="kpi-closed">0</h2>
+                    <div class="flex items-center gap-2 mt-2">
+                        <span class="text-xs px-2 py-0.5 rounded-full bg-green-500/10 text-green-400 border border-green-500/20" id="kpi-closed-pct">0% Rate</span>
+                    </div>
+                </div>
+
+                <!-- KPI 4 -->
+                <div class="glass-panel rounded-xl p-5 relative overflow-hidden group">
+                    <div class="absolute top-0 right-0 p-4 opacity-10 group-hover:opacity-20 transition-opacity">
+                        <i data-lucide="clock" class="w-16 h-16 text-orange-500"></i>
+                    </div>
+                    <p class="text-slate-400 font-medium text-xs uppercase tracking-wider">Avg. Query Age</p>
+                    <h2 class="text-3xl font-bold text-white mt-2 metric-value"><span id="kpi-age">0</span> <span class="text-sm font-normal text-slate-400">days</span></h2>
+                    <div class="flex items-center gap-2 mt-2">
+                        <span class="text-xs text-orange-400">Time to resolve</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard Grid -->
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                
+                <!-- PROMINENT SITE METRICS (Spans 2 cols) -->
+                <div class="lg:col-span-2 glass-panel rounded-xl p-6 flex flex-col">
+                    <div class="flex items-center justify-between mb-6">
+                        <div>
+                            <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                                <i data-lucide="map-pin" class="w-5 h-5 text-blue-400"></i>
+                                <span id="siteChartTitle">Site Performance Leaderboard</span>
+                            </h3>
+                            <p class="text-sm text-slate-400" id="siteChartSubtitle">Top 10 sites by query volume (Open vs Closed)</p>
+                        </div>
+                        <div class="flex gap-2">
+                            <button class="p-2 hover:bg-white/5 rounded-lg text-slate-400 hover:text-white transition-colors" title="Sort by Open">
+                                <i data-lucide="arrow-down-narrow-wide" class="w-4 h-4"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="flex-grow chart-container" id="siteChart"></div>
+                </div>
+
+                <!-- Status Distribution -->
+                <div class="glass-panel rounded-xl p-6 flex flex-col">
+                    <div class="mb-6">
+                        <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                            <i data-lucide="pie-chart" class="w-5 h-5 text-purple-400"></i>
+                            Status Distribution
+                        </h3>
+                        <p class="text-sm text-slate-400">Breakdown of current query statuses</p>
+                    </div>
+                    <div class="flex-grow flex items-center justify-center relative chart-container" id="statusChart">
+                        <!-- Inner text for donut will be handled by chart config -->
+                    </div>
+                </div>
+
+                <!-- Query Aging Histogram (Spans 2 cols) -->
+                <div class="lg:col-span-2 glass-panel rounded-xl p-6">
+                    <div class="flex items-center justify-between mb-6">
+                        <div>
+                            <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                                <i data-lucide="hourglass" class="w-5 h-5 text-orange-400"></i>
+                                Query Aging Analysis
+                            </h3>
+                            <p class="text-sm text-slate-400">Distribution of Open Queries by Age (Days)</p>
+                        </div>
+                    </div>
+                    <div class="chart-container" id="agingChart"></div>
+                </div>
+
+                 <!-- Role/Form Metrics -->
+                 <div class="glass-panel rounded-xl p-6 flex flex-col">
+                    <div class="mb-6">
+                        <h3 class="text-lg font-semibold text-white flex items-center gap-2">
+                            <i data-lucide="users" class="w-5 h-5 text-pink-400"></i>
+                            Top Forms
+                        </h3>
+                        <p class="text-sm text-slate-400">Most queried forms/folders</p>
+                    </div>
+                    <div class="flex-grow chart-container" id="formChart"></div>
+                </div>
+
+            </div>
+
+            <!-- Data Table Preview -->
+            <div class="glass-panel rounded-xl overflow-hidden flex flex-col max-h-[500px]">
+                <div class="p-4 border-b border-white/10 flex items-center justify-between bg-slate-800/50">
+                    <h3 class="font-semibold text-white flex items-center gap-2">
+                        <i data-lucide="table" class="w-4 h-4 text-slate-400"></i>
+                        Details
+                    </h3>
+                    <div class="relative">
+                        <input type="text" id="tableSearch" placeholder="Search query text..." class="bg-slate-900 border border-slate-700 text-xs text-white rounded-md px-3 py-1.5 w-64 focus:outline-none focus:border-blue-500">
+                        <i data-lucide="search" class="w-3 h-3 text-slate-500 absolute right-3 top-2"></i>
+                    </div>
+                </div>
+                <div class="overflow-auto flex-grow">
+                    <table class="w-full text-left text-xs">
+                        <thead class="bg-slate-800/80 sticky top-0 backdrop-blur-md z-10">
+                            <tr class="text-slate-400">
+                                <th class="p-3 font-medium">Site</th>
+                                <th class="p-3 font-medium">Subject</th>
+                                <th class="p-3 font-medium">Query ID</th>
+                                <th class="p-3 font-medium">Form</th>
+                                <th class="p-3 font-medium">Question</th>
+                                <th class="p-3 font-medium">Age</th>
+                                <th class="p-3 font-medium">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody id="queryTableBody" class="divide-y divide-white/5 text-slate-300">
+                            <!-- Rows injected via JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-white/5 mt-12 py-6">
+        <div class="max-w-7xl mx-auto px-6 text-center text-slate-500 text-xs">
+            <p>Generated for Axiom Fusion Query Reporting. Does not store data permanently.</p>
+        </div>
+    </footer>
+
+    <script>
+        // --- STATE MANAGEMENT ---
+        let globalRawData = [];
+        let currentFilteredData = [];
+        let charts = {};
+
+        // --- INITIALIZATION ---
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            
+            // Setup Drag & Drop
+            const dropZone = document.body;
+            
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            dropZone.addEventListener('drop', handleDrop, false);
+            
+            document.getElementById('fileInput').addEventListener('change', handleFileSelect);
+            document.getElementById('tableSearch').addEventListener('keyup', filterTable);
+            
+            // Filter Listeners
+            document.getElementById('siteFilter').addEventListener('change', handleFilterChange);
+            document.getElementById('siteFilterMobile').addEventListener('change', handleFilterChange);
+        });
+
+        // --- FILE HANDLING ---
+        function handleDrop(e) {
+            const dt = e.dataTransfer;
+            const files = dt.files;
+            handleFiles(files);
+        }
+
+        function handleFileSelect(e) {
+            const files = e.target.files;
+            handleFiles(files);
+        }
+
+        // REPLACED PAPAPARSE WITH SHEETJS FOR BINARY FILE SUPPORT
+        function handleFiles(files) {
+            if (files.length === 0) return;
+            const file = files[0];
+            
+            // UI Feedback
+            document.getElementById('upload-btn-text').classList.add('hidden');
+            document.getElementById('upload-spinner').classList.remove('hidden');
+            document.getElementById('error-container').classList.add('hidden');
+
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    
+                    // Assume data is in the first sheet
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    
+                    // Convert to Array of Arrays (header: 1) to match logic of previous parser
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: 1, raw: false}); // raw: false ensures dates are parsed as strings
+                    
+                    console.log("Excel Parse Complete. Rows:", jsonData.length);
+                    
+                    const cleanData = intelligentParse(jsonData);
+                    
+                    if (cleanData && cleanData.length > 0) {
+                        switchToDashboardView();
+                        initializeData(cleanData);
+                    } else {
+                        showError("No valid Axiom data rows found. Please check file format.");
+                    }
+                } catch (err) {
+                    console.error("Excel Parse Error:", err);
+                    showError("Failed to read file. Ensure it is a valid Excel/CSV file.");
+                }
+            };
+            
+            reader.onerror = function() {
+                showError("Error reading file.");
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
+
+        function showError(msg) {
+            document.getElementById('upload-btn-text').classList.remove('hidden');
+            document.getElementById('upload-spinner').classList.add('hidden');
+            document.getElementById('error-msg').innerText = msg;
+            document.getElementById('error-container').classList.remove('hidden');
+        }
+
+        function switchToDashboardView() {
+            document.getElementById('upload-hero').classList.add('hidden');
+            document.getElementById('dashboard-view').classList.remove('hidden');
+            
+            // Show Nav Controls
+            const navControls = document.getElementById('nav-controls');
+            navControls.classList.remove('hidden');
+            navControls.classList.add('flex');
+
+            // Show Mobile Nav
+            const mobileFilter = document.getElementById('mobile-filter-container');
+            if (mobileFilter) mobileFilter.classList.remove('hidden');
+        }
+
+        // --- INTELLIGENT PARSER (ARRAY DATA SUPPORT) ---
+        function intelligentParse(rows) {
+            const data = [];
+            
+            // Iterate all rows. We don't assume a start index because it varies.
+            for (let i = 0; i < rows.length; i++) {
+                const row = rows[i];
+                
+                // Ragged Row Check: Data rows in Axiom are usually long (>15 cols)
+                if (!row || row.length < 15) continue;
+
+                // PATTERN MATCHING 
+                // Col 1: "21 - Cook County Health" -> Regex: Digits + " - "
+                // Col Last (or near last): Status "Closed", "Open", "New"
+                
+                const col1 = String(row[1] || '').trim();
+                
+                // Find the last non-empty column for Status
+                let statusVal = '';
+                for(let k=row.length-1; k>=0; k--) {
+                    if (row[k] && String(row[k]).trim() !== '') {
+                        statusVal = String(row[k]).trim();
+                        break;
+                    }
+                }
+                const statusLower = statusVal.toLowerCase();
+
+                // 1. Check Site Pattern
+                const isSite = /\d+\s-\s/.test(col1); 
+                
+                // 2. Check Status Keyword
+                const isStatus = ['open', 'closed', 'new', 'pending', 'answered'].some(s => statusLower.includes(s));
+
+                if (isSite && isStatus) {
+                    let obj = {};
+
+                    // MAPPING (Specific to Axiom Export)
+                    // Arrays from SheetJS might be sparse, access by index directly
+                    obj['Site'] = row[1];
+                    obj['Subject'] = row[2];
+                    obj['Form'] = row[3];
+                    obj['Query ID'] = row[6];
+                    obj['Age'] = row[11];
+                    
+                    // Text Mapping
+                    obj['Query Text'] = (row[17] && String(row[17]).length > 5) ? row[17] : (row[16] || row[18]);
+                    
+                    obj['Status'] = statusVal;
+
+                    // Cleanup Age & ID
+                    if (obj['Age']) obj['Age'] = String(obj['Age']).replace('.0', '');
+                    if (obj['Query ID']) obj['Query ID'] = String(obj['Query ID']).replace('.0', '');
+
+                    if (obj['Site'] && obj['Status']) {
+                        obj['Question Text'] = obj['Query Text']; 
+                        data.push(obj);
+                    }
+                }
+            }
+            
+            console.log("Parsed " + data.length + " valid data rows.");
+            return data;
+        }
+
+        // --- DATA LOGIC ---
+        
+        function initializeData(data) {
+            globalRawData = data;
+            populateSiteFilters(data);
+            handleFilterChange(); 
+        }
+
+        function populateSiteFilters(data) {
+            const sites = [...new Set(data.map(d => d.Site || "Unknown"))].filter(Boolean).sort();
+            
+            const mainSelect = document.getElementById('siteFilter');
+            const mobileSelect = document.getElementById('siteFilterMobile');
+            
+            mainSelect.innerHTML = '<option value="all">All Sites</option>';
+            mobileSelect.innerHTML = '<option value="all">All Sites</option>';
+
+            sites.forEach(site => {
+                const opt1 = document.createElement('option');
+                opt1.value = site;
+                opt1.text = site;
+                mainSelect.appendChild(opt1);
+
+                const opt2 = document.createElement('option');
+                opt2.value = site;
+                opt2.text = site;
+                mobileSelect.appendChild(opt2);
+            });
+        }
+
+        function handleFilterChange(e) {
+            let selectedSite = 'all';
+            if (e) {
+                selectedSite = e.target.value;
+                document.getElementById('siteFilter').value = selectedSite;
+                document.getElementById('siteFilterMobile').value = selectedSite;
+            } else {
+                selectedSite = document.getElementById('siteFilter').value;
+            }
+
+            if (selectedSite === 'all') {
+                currentFilteredData = globalRawData;
+                document.getElementById('kpi-scope-label').innerText = "All Sites";
+                document.getElementById('siteChartTitle').innerText = "Site Performance Leaderboard";
+                document.getElementById('siteChartSubtitle').innerText = "Top 10 sites by query volume";
+            } else {
+                currentFilteredData = globalRawData.filter(d => d.Site === selectedSite);
+                document.getElementById('kpi-scope-label').innerText = selectedSite.substring(0, 20) + (selectedSite.length > 20 ? "..." : "");
+                document.getElementById('siteChartTitle').innerText = "Current Site Metrics";
+                document.getElementById('siteChartSubtitle').innerText = "Comparison against total volume";
+            }
+
+            updateDashboard(currentFilteredData);
+        }
+
+        // --- DASHBOARD UPDATE & CHART RENDERING (UNCHANGED) ---
+        function updateDashboard(data) {
+            const total = data.length;
+            const openQueries = data.filter(d => (d.Status || '').toLowerCase().includes('open') || (d.Status || '').toLowerCase().includes('new') || (d.Status || '').toLowerCase().includes('pending')).length;
+            const closedQueries = data.filter(d => (d.Status || '').toLowerCase().includes('closed')).length;
+            
+            let totalAge = 0;
+            let ageCount = 0;
+            data.forEach(d => {
+                const age = parseFloat(d.Age || 0);
+                if (!isNaN(age)) {
+                    totalAge += age;
+                    ageCount++;
+                }
+            });
+            const avgAge = ageCount > 0 ? Math.round(totalAge / ageCount) : 0;
+
+            animateValue("kpi-total", parseInt(document.getElementById("kpi-total").innerText), total, 500);
+            animateValue("kpi-open", parseInt(document.getElementById("kpi-open").innerText), openQueries, 500);
+            animateValue("kpi-closed", parseInt(document.getElementById("kpi-closed").innerText), closedQueries, 500);
+            animateValue("kpi-age", parseInt(document.getElementById("kpi-age").innerText), avgAge, 500);
+
+            const safeTotal = total === 0 ? 1 : total;
+            document.getElementById("kpi-open-pct").innerText = Math.round((openQueries/safeTotal)*100) + "% Rate";
+            document.getElementById("kpi-closed-pct").innerText = Math.round((closedQueries/safeTotal)*100) + "% Rate";
+
+            const siteMap = {};
+            data.forEach(d => {
+                const site = d.Site || "Unknown";
+                if (!siteMap[site]) siteMap[site] = { open: 0, closed: 0, total: 0 };
+                siteMap[site].total++;
+                if ((d.Status || '').toLowerCase().includes('closed')) {
+                    siteMap[site].closed++;
+                } else {
+                    siteMap[site].open++;
+                }
+            });
+
+            const sortedSites = Object.keys(siteMap).sort((a,b) => siteMap[b].total - siteMap[a].total).slice(0, 12);
+            renderSiteChart(sortedSites, siteMap);
+
+            const statusMap = {};
+            data.forEach(d => {
+                const s = d.Status || "Unknown";
+                statusMap[s] = (statusMap[s] || 0) + 1;
+            });
+            renderStatusChart(statusMap);
+
+            const ageBins = { '0-7 days': 0, '8-14 days': 0, '15-30 days': 0, '31-60 days': 0, '61-90 days': 0, '90+ days': 0 };
+            data.filter(d => !(d.Status || '').toLowerCase().includes('closed')).forEach(d => {
+                const age = parseFloat(d.Age || 0);
+                if (age <= 7) ageBins['0-7 days']++;
+                else if (age <= 14) ageBins['8-14 days']++;
+                else if (age <= 30) ageBins['15-30 days']++;
+                else if (age <= 60) ageBins['31-60 days']++;
+                else if (age <= 90) ageBins['61-90 days']++;
+                else ageBins['90+ days']++;
+            });
+            renderAgingChart(ageBins);
+
+            const formMap = {};
+            data.forEach(d => {
+                const f = d.Form || d.Folder || "General";
+                formMap[f] = (formMap[f] || 0) + 1;
+            });
+            const sortedForms = Object.keys(formMap).sort((a,b) => formMap[b] - formMap[a]).slice(0, 8);
+            renderFormChart(sortedForms, formMap);
+
+            renderTable(data.slice(0, 100)); 
+        }
+
+        const commonOptions = {
+            chart: {
+                background: 'transparent',
+                toolbar: { show: false },
+                fontFamily: 'Inter, sans-serif',
+                animations: { enabled: true, easing: 'easeinout', speed: 800 }
+            },
+            theme: { mode: 'dark' },
+            grid: { borderColor: '#334155', strokeDashArray: 4 },
+            dataLabels: { enabled: false }
+        };
+
+        function renderSiteChart(labels, map) {
+            const openData = labels.map(l => map[l].open);
+            const closedData = labels.map(l => map[l].closed);
+            const options = {
+                ...commonOptions,
+                series: [{ name: 'Open/Pending', data: openData, color: '#f59e0b' }, { name: 'Closed', data: closedData, color: '#10b981' }],
+                chart: { type: 'bar', height: 350, stacked: true, background: 'transparent', toolbar: { show: false } },
+                plotOptions: { bar: { horizontal: false, borderRadius: 4, columnWidth: labels.length === 1 ? '20%' : '55%' } },
+                xaxis: { categories: labels.map(l => l.split('-')[0].trim()), labels: { style: { colors: '#94a3b8' } } },
+                yaxis: { labels: { style: { colors: '#94a3b8' } } },
+                legend: { position: 'top', labels: { colors: '#cbd5e1' } },
+                fill: { opacity: 1 }
+            };
+            if (charts.site) charts.site.destroy();
+            charts.site = new ApexCharts(document.querySelector("#siteChart"), options);
+            charts.site.render();
+        }
+
+        function renderStatusChart(map) {
+            const options = {
+                ...commonOptions,
+                series: Object.values(map),
+                labels: Object.keys(map),
+                chart: { type: 'donut', height: 300, background: 'transparent' },
+                plotOptions: { pie: { donut: { size: '75%', labels: { show: true, total: { show: true, label: 'Queries', color: '#cbd5e1', formatter: function (w) { return w.globals.seriesTotals.reduce((a, b) => a + b, 0) } } } } } },
+                stroke: { show: false },
+                legend: { show: false },
+                colors: ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
+            };
+            if (charts.status) charts.status.destroy();
+            charts.status = new ApexCharts(document.querySelector("#statusChart"), options);
+            charts.status.render();
+        }
+
+        function renderAgingChart(bins) {
+            const options = {
+                ...commonOptions,
+                series: [{ name: 'Queries', data: Object.values(bins), color: '#ef4444' }],
+                chart: { type: 'area', height: 300, background: 'transparent', toolbar: { show: false } },
+                stroke: { curve: 'smooth', width: 2 },
+                fill: { type: 'gradient', gradient: { shadeIntensity: 1, opacityFrom: 0.7, opacityTo: 0.1, stops: [0, 90, 100] } },
+                xaxis: { categories: Object.keys(bins), labels: { style: { colors: '#94a3b8' } } },
+                yaxis: { labels: { style: { colors: '#94a3b8' } } }
+            };
+            if (charts.aging) charts.aging.destroy();
+            charts.aging = new ApexCharts(document.querySelector("#agingChart"), options);
+            charts.aging.render();
+        }
+
+        function renderFormChart(labels, map) {
+            const options = {
+                ...commonOptions,
+                series: [{ data: labels.map(l => map[l]) }],
+                chart: { type: 'bar', height: 300, background: 'transparent', toolbar: { show: false } },
+                plotOptions: { bar: { borderRadius: 4, horizontal: true, barHeight: '60%' } },
+                colors: ['#8b5cf6'],
+                xaxis: { categories: labels, labels: { style: { colors: '#94a3b8' } } },
+                yaxis: { labels: { style: { colors: '#94a3b8' }, maxWidth: 150 } }
+            };
+            if (charts.form) charts.form.destroy();
+            charts.form = new ApexCharts(document.querySelector("#formChart"), options);
+            charts.form.render();
+        }
+
+        function renderTable(data) {
+            const tbody = document.getElementById('queryTableBody');
+            tbody.innerHTML = '';
+            data.forEach(d => {
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-white/5 transition-colors border-b border-white/5 last:border-0";
+                const statusColor = (d.Status || '').toLowerCase().includes('closed') ? 'text-green-400' : 'text-yellow-400';
+                const shortSite = (d.Site || '').length > 20 ? (d.Site || '').substring(0, 20) + '...' : d.Site;
+                tr.innerHTML = `
+                    <td class="p-3 whitespace-nowrap text-slate-300" title="${d.Site}">${shortSite}</td>
+                    <td class="p-3 text-slate-400">${d.Subject || '-'}</td>
+                    <td class="p-3 font-mono text-blue-400 text-xs">${d['Query ID'] || '-'}</td>
+                    <td class="p-3 text-slate-400">${d.Form || d.Folder || '-'}</td>
+                    <td class="p-3 text-slate-300 max-w-xs truncate" title="${d['Question Text'] || d['Query Text']}">${d['Question Text'] || d['Query Text'] || '-'}</td>
+                    <td class="p-3 text-slate-400">${d.Age || '0'}</td>
+                    <td class="p-3 ${statusColor} font-medium text-xs"><span class="px-2 py-1 rounded-full bg-white/5">${d.Status || '-'}</span></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function filterTable() {
+            const term = document.getElementById('tableSearch').value.toLowerCase();
+            const filtered = currentFilteredData.filter(d => Object.values(d).some(val => String(val).toLowerCase().includes(term)));
+            renderTable(filtered.slice(0, 100));
+        }
+
+        function animateValue(id, start, end, duration) {
+            if (start === end) return;
+            const range = end - start;
+            let current = start;
+            const increment = end > start ? 1 : -1;
+            const stepTime = Math.abs(Math.floor(duration / range));
+            const obj = document.getElementById(id);
+            const timer = setInterval(function() {
+                current += increment;
+                obj.innerHTML = current;
+                if (current == end) {
+                    clearInterval(timer);
+                }
+            }, Math.max(stepTime, 10)); 
+            setTimeout(() => { clearInterval(timer); obj.innerHTML = end; }, duration + 10);
+        }
+    </script>
+</body>
+</html>
