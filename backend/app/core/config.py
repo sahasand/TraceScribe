@@ -7,6 +7,17 @@ from typing import Optional
 from pydantic_settings import BaseSettings
 
 
+# Determine storage path based on platform (outside class to avoid Pydantic issues)
+if platform.system() == "Windows":
+    _default_storage = os.path.join(
+        os.getenv("LOCALAPPDATA", "."),
+        "TraceScribe",
+        "uploads"
+    )
+else:
+    _default_storage = "./uploads"
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
 
@@ -24,17 +35,7 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
 
     # Local Storage
-    # Determine storage path based on platform
-    if platform.system() == "Windows":
-        default_storage = os.path.join(
-            os.getenv("LOCALAPPDATA", "."),
-            "TraceScribe",
-            "uploads"
-        )
-    else:
-        default_storage = "./uploads"
-
-    storage_path: str = default_storage
+    storage_path: str = _default_storage
 
     # Clerk Authentication
     clerk_secret_key: str = ""

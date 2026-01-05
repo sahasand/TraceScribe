@@ -5,14 +5,16 @@ data sovereignty and compliance (HIPAA, GxP, 21 CFR Part 11).
 """
 
 import os
+import logging
 import uuid
 import aiofiles
 import aiofiles.os
 from pathlib import Path
 from typing import Optional
-from loguru import logger
 
 from .config import settings
+
+logger = logging.getLogger(__name__)
 
 
 class LocalStorage:
